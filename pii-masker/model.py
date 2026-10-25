@@ -14,44 +14,97 @@ class PIIMasker:
         self.model.to(self.device)
 
     def mask_pii(self, input_text):
-        inputs = self.tokenizer(input_text, return_tensors="pt", padding=True, truncation=True)
+        # Keep character offsets so predictions can be mapped back to the
+        # original text.  The previous implementation zipped predictions
+        # with tokenizer.tokenize(), which omitted [CLS]/[SEP] while the
+        # predictions still included them.  That shifted every label by one
+        # token (for example, labelling "My" as an address).
+        inputs = self.tokenizer(
+            input_text,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            return_offsets_mapping=True,
+        )
+        offsets = inputs.pop("offset_mapping")[0].tolist()
 
         with torch.no_grad():
             outputs = self.model(**{k: v.to(self.device) for k, v in inputs.items()})
 
         logits = outputs.logits
         predictions = torch.argmax(logits, dim=2)
-        predicted_labels = [self.model.config.id2label[pred.item()] for pred in predictions[0]]
+        predicted_labels = [
+            self.model.config.id2label[pred.item()]
+            for pred in predictions[0]
+        ]
 
-        result_dict = {}
-        for word, label in zip(self.tokenizer.tokenize(input_text), predicted_labels):
-            result_dict[word] = label.replace('_STUDENT', '')
+        # Convert token-level labels into character spans.  Special tokens
+        # have an empty (0, 0) offset and are therefore ignored naturally.
+        token_spans = []
+        for (start, end), label in zip(offsets, predicted_labels):
+            if end <= start:
+                continue
+            label = label.replace('_STUDENT', '')
+            if label == 'O':
+                continue
 
-        # Initialize the dictionary to hold SSNs
-        ssn_dict = self.extract_ssn(input_text)
+            entity_type = label.split('-', 1)[-1]
+            token_spans.append((start, end, entity_type))
 
-        output = []
-        previous_value = None
-        pii_dict = {}  # Initialize the dictionary here
-
-        for key, value in result_dict.items():
-            key = key.replace('▁', ' ')
-
-            if value == 'O':
-                output.append(key.strip())
+        # Join adjacent subword tokens belonging to the same entity.  A one
+        # character gap allows normal whitespace inside names and addresses.
+        entities = []
+        for start, end, entity_type in token_spans:
+            if (
+                entities
+                and entities[-1]['type'] == entity_type
+                and start <= entities[-1]['end'] + 1
+            ):
+                entities[-1]['end'] = end
             else:
-                if previous_value != value:
-                    output.append(f"[{value}]")
-                if value not in pii_dict:
-                    pii_dict[value] = []
-                pii_dict[value].append(key.strip())
+                entities.append({'start': start, 'end': end, 'type': entity_type})
 
-            previous_value = value
+        # SSNs are handled deterministically as well.  The original code
+        # reported them in pii_dict but left the sensitive value visible in
+        # masked_text; replace any overlapping model spans with an SSN span.
+        ssn_pattern = r'\b(?:\d{3}-\d{2}-\d{4}|\d{9})\b'
+        for match in re.finditer(ssn_pattern, input_text):
+            entities = [
+                entity for entity in entities
+                if entity['end'] <= match.start() or entity['start'] >= match.end()
+            ]
+            entities.append({
+                'start': match.start(),
+                'end': match.end(),
+                'type': 'SSN',
+            })
+        entities.sort(key=lambda entity: entity['start'])
 
-        masked_text = ' '.join(output)
+        pii_dict = {}
+        masked_parts = []
+        cursor = 0
+        for entity in entities:
+            start, end, entity_type = entity['start'], entity['end'], entity['type']
+            # SentencePiece offsets can include the whitespace immediately
+            # before the first subword. Keep that whitespace in the original
+            # text rather than inside the detected PII value.
+            while start < end and input_text[start].isspace():
+                start += 1
+            while end > start and input_text[end - 1].isspace():
+                end -= 1
+            if start >= end:
+                continue
+            masked_parts.append(input_text[cursor:start])
+            masked_parts.append(f"[B-{entity_type}]")
+            pii_dict.setdefault(f"B-{entity_type}", []).append(input_text[start:end])
+            cursor = end
 
-        # Combine ssn_dict into pii_dict
-        pii_dict.update(ssn_dict)
+        masked_parts.append(input_text[cursor:])
+        masked_text = ''.join(masked_parts)
+
+        # Add deterministic SSN matches that are handled separately by the
+        # original project.
+        pii_dict.update(self.extract_ssn(input_text))
 
         return masked_text, pii_dict
 

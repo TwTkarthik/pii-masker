@@ -1,154 +1,107 @@
+# PII Masker
 
-<p align="center">
-    <img src="pii_cover.jpeg" alt="PII Masker Cover" style="width: 100%; max-width: 900px;">
-</p>
+PII Masker is a Python tool that detects and masks personally identifiable information in text. It uses a fine-tuned DeBERTa-v3 token-classification model and returns both masked text and structured detection results.
 
-<p align="center">
-PII Masker is an advanced open-source tool that protects your sensitive data using state-of-the-art AI, powered by DeBERTa-v3
-</p>
+## What it can detect
 
-<p align="center">
-<a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
-<a href="https://python.org"><img src="https://img.shields.io/badge/python-3.8+-blue.svg" alt="Python: 3.8+"></a>
-<a href="https://milvus.io/"><img src="https://img.shields.io/badge/Milvus-vector--database-blue.svg" alt="Milvus"></a>
-<a href="https://huggingface.co/"><img src="https://img.shields.io/badge/HuggingFace-models-yellow.svg" alt="Hugging Face"></a>
-</p>
+- Names
+- Email addresses
+- Phone numbers
+- IDs and other identification numbers
+- Usernames
+- Personal URLs
+- Street addresses
+- Common SSN formats through an additional pattern check
 
-<p align="center">
-    <a href="#-key-features"><b>Features</b></a> •
-    <a href="#-installation"><b>Installation</b></a> •
-    <a href="#-quick-start"><b>Quick Start</b></a> •
-    <a href="#-how-it-works"><b>How It Works</b></a> •
-    <a href="#-Contributing"><b>Contributing</b></a>
-</p>
+## Project structure
 
-
-PII Masker is an advanced open-source tool designed to protect your sensitive data by leveraging cutting-edge AI models. Built on top of DeBERTa-v3, this tool ensures high-precision detection and masking of Personally Identifiable Information (PII), making it a perfect fit for any data-sensitive workflows. Whether you're handling customer data, performing data analysis, or ensuring compliance with privacy regulations, PII Masker provides a robust, scalable solution to keep your information secure.
-
-
-## Why Choose PII Masker?
-
-When handling sensitive information, it's crucial to use tools that not only perform well but also ensure compliance and protect privacy. Here's why PII Masker stands out:
-
-- **High Precision**: Utilizes DeBERTa-v3 for accurate detection and masking of various PII types.
-- **Compliance Friendly**: Designed to help organizations meet privacy laws and regulations.
-- **Flexible Integration**: Offers easy integration with existing systems through a simple Python API.
-
-
-## ✨ Key Features
-
-* 🔒 **Comprehensive Protection**: Identifies and masks multiple PII types including names, addresses, phone numbers, and more
-* 🚀 **High Performance**: Powered by DeBERTa-v3 with 1024 token support for processing longer documents
-* 🎯 **Precision Focused**: Advanced NLP model fine-tuned specifically for PII detection
-* 📊 **Structured Output**: Get both masked text and structured PII dictionary
-* 🔄 **Easy Integration**: Simple Python API for seamless integration into your workflow
-
-## 📦 Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/pii-masker.git
-cd pii-masker
+```text
+pii-masker/
+  model.py                         # PIIMasker inference class
+  output_model/deberta3base_1024/  # tokenizer files and downloaded model weights
+README.md
+requirements.txt
+setup.py
 ```
 
-2. Install dependencies:
-```bash
-pip install -r requirements.txt
+## Setup for local inference
+
+Python 3.12 or newer is recommended.
+
+```powershell
+git clone https://github.com/<your-username>/<your-repository>.git
+cd <your-repository>
+
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install torch transformers sentencepiece
 ```
 
-3. Download the model:
-```bash
-# Option 1: Manual download
-# Visit: https://huggingface.co/collections/hydroxai/pii-models-674649fea0de7ab99ed11347
-# Place files in: pii-masker/output_model/deberta3base_1024/
+Download the trained model weights. They are intentionally not stored in Git because the weights file is larger than GitHub's normal 100 MB file limit.
+
+```powershell
+hf download hydroxai/pii_model_weight --include "*.safetensors" --local-dir pii-masker\output_model\deberta3base_1024
 ```
 
-## 🚀 Quick Start
+If the `hf` command is not available, install the Hugging Face Hub CLI first:
 
-1. Change to the `pii-masker` directory:
-   ```bash
-   cd pii-masker
+```powershell
+python -m pip install -U huggingface_hub
+```
 
-2. Use the following code to get started:
-   ```python
-   from model import PIIMasker
-    
-   # Initialize the PIIMasker
-   masker = PIIMasker()
-    
-   # Mask PII in your text
-   text = "John Doe lives at 1234 Elm St."
-   masked_text, pii_dict = masker.mask_pii(text)
-    
-   print(masked_text)
-   # Output: "[NAME] lives at [ADDRESS]"
-   ```
+## Quick start
 
-## 🔍 How It Works
+From the repository root:
 
-PII Masker employs a sophisticated pipeline powered by DeBERTa-v3:
+```powershell
+python -c "import sys; sys.path.insert(0,'pii-masker'); from model import PIIMasker; m=PIIMasker(); print(m.mask_pii('My email is alice@example.com and my SSN is 123-45-6789.'))"
+```
 
-1. **Tokenization** → Smart text splitting for optimal processing
-2. **Model Inference** → AI-powered PII detection
-3. **Entity Recognition** → Precise identification of sensitive data
-4. **Masking** → Secure replacement of PII with placeholders
-5. **Data Extraction** → Structured output for further processing
+Example output:
 
-## 🆕 Latest Updates
-We are excited to announce a significant addition to the PII Masker project: a new model with a different approach from DeBERTa. Here are the details:
+```text
+('My email is [B-EMAIL] and my SSN is [B-SSN].',
+ {'B-EMAIL': ['alice@example.com'], 'B-SSN': ['123-45-6789']})
+```
 
-- 🌟 Model Link:
-- hydroxai/pii_model_longtransfomer_version
-- Model detail:
-- train_pii_longtransformer.ipynb
+The first value is the masked text. The second value is a dictionary of detected entities.
 
-- 🔧 Performance Improvement:
-- This new model implementation has resulted in approximately a 4% improvement in performance compared to the previous DeBERTa-v3 model. The combination of Longformer's extended sequence length (4096 tokens) and the Bi-LSTM head enhances the sequential context understanding, making PII detection more accurate and reliable.
+## Python usage
 
-## 🛠️ Advanced Usage
+```python
+import sys
 
-Check out our detailed examples:
-- [RAG Integration Example](RAG_with_pii_and_milvus.ipynb)
+sys.path.insert(0, "pii-masker")
+from model import PIIMasker
 
-## 🗓️ Future Updates
+masker = PIIMasker()
+masked_text, pii_dict = masker.mask_pii(
+    "John Doe can be contacted at john@example.com."
+)
 
-We are committed to continuously enhancing PII Masker to meet evolving data privacy needs. Over the next two weeks, we plan to expand the scope of PII detection to include **text and video data**, ensuring comprehensive coverage for sensitive information across multiple media formats.
+print(masked_text)
+print(pii_dict)
+```
 
-### Planned Features:
-- **Text Data**:
-  - Improved detection of PII in longer and more complex documents.
-  - Support for additional entity types, such as financial information and medical records.
-  
-- **Video Data**:
-  - Integration of OCR (Optical Character Recognition) for extracting text from video frames.
-  - Advanced video frame analysis to identify and mask PII directly in video content.
+## How it works
 
-These updates aim to make PII Masker more versatile, covering broader use cases while maintaining the precision and reliability our users trust. Stay tuned for more details in our upcoming releases!
+1. The tokenizer converts the input text into model tokens while preserving text positions.
+2. DeBERTa-v3 classifies each token as ordinary text or a PII category.
+3. Adjacent pieces are joined back into complete detected values.
+4. Detected values are replaced with labels such as `[B-EMAIL]`.
+5. The function returns the masked text and a structured dictionary.
 
-  
-## 🤝 Contributing
+## Important notes
 
-Contributions make the open-source community an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
+- Model predictions should be tested with data that matches your use case before production use.
+- Do not commit `.venv`, caches, secrets, or downloaded model weights.
+- The project supports CPU inference and uses CUDA automatically when a compatible GPU is available.
+- The included notebooks contain additional training and RAG-related experiments.
 
-1. Fork the Project
-2. Create your Feature Branch
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+## Related files
 
+- `RAG_with_pii_and_milvus.ipynb` - RAG integration example
+- `train_pii_longtransformer.ipynb` - long-document model experiment
+- `requirements.txt` - original broader notebook/training dependency list
 
-
-## 🙏 Acknowledgments
-
-Special thanks to:
-- [Microsoft](https://github.com/microsoft/DeBERTa) for the DeBERTa model
-- [Hugging Face](https://huggingface.co) for model hosting and transformers library
-- [Zilliz](https://zilliz.com) for their support and Milvus, the vector database powering our solution
-- All our contributors and supporters
-
-
----
-
-<p align="center">
-Made with ❤️ for the privacy-conscious developer community
-</p>

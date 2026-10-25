@@ -1,0 +1,20 @@
+# Python virtual environments and generated files
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local model weights - download these from Hugging Face instead of committing
+pii-masker/output_model/deberta3base_1024/model.safetensors
+
+# Local caches and editor files
+.cache/
+.pytest_cache/
+.ipynb_checkpoints/
+.vscode/
+.idea/
+
+# OS files
+Thumbs.db
+.DS_Store
